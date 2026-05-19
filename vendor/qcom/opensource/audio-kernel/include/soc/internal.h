@@ -1,0 +1,1 @@
+/home/burak/kernels/GalaxyS22/archive/kernel_r0q/kernel_platform/./msm-kernel/drivers/base/regmap/internal.h
