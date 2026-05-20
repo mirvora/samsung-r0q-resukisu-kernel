@@ -6,3 +6,5 @@ prebuilts/
 vmlinux
 *.vmlinux
 kernel_platform/common/KernelSU/
+kernel_platform/prebuilts/
+kernel_platform/prebuilts-master/
