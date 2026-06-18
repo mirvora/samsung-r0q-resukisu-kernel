@@ -1,8 +1,1 @@
-out/
-*.o
-*.ko
-*.lto.o
-prebuilts/
-vmlinux
-*.vmlinux
 kernel_platform/common/KernelSU/

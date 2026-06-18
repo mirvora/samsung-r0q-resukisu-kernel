@@ -860,7 +860,9 @@ CONFIG_GAF_V6=y
 
 
 
-
+# ReSukiSU
+CONFIG_KSU=y
+CONFIG_KSU_SUSFS=y
 
 
 

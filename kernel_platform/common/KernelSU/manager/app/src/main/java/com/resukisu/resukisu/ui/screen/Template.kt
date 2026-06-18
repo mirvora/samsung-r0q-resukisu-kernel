@@ -43,6 +43,7 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -56,15 +57,18 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.core.content.getSystemService
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.compose.dropUnlessResumed
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.resukisu.resukisu.R
 import com.resukisu.resukisu.ui.component.settings.AppBackButton
 import com.resukisu.resukisu.ui.component.settings.SettingsJumpPageWidget
-import com.resukisu.resukisu.ui.component.settings.splicedLazyColumnGroup
+import com.resukisu.resukisu.ui.component.settings.lazySegmentColumn
 import com.resukisu.resukisu.ui.navigation.LocalNavigator
+import com.resukisu.resukisu.ui.navigation.Navigator
 import com.resukisu.resukisu.ui.navigation.Route
 import com.resukisu.resukisu.ui.theme.CardConfig
 import com.resukisu.resukisu.ui.theme.ThemeConfig
@@ -84,6 +88,7 @@ import kotlinx.coroutines.launch
 fun AppProfileTemplateScreen() {
     val pullRefreshState = rememberPullToRefreshState()
     val viewModel = viewModel<TemplateViewModel>()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     val scrollBehavior =
         TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
@@ -92,7 +97,7 @@ fun AppProfileTemplateScreen() {
     LaunchedEffect(Unit) {
         scrollBehavior.state.heightOffset = scrollBehavior.state.heightOffsetLimit
 
-        if (viewModel.templateList.isEmpty()) {
+        if (uiState.templateList.isEmpty()) {
             viewModel.fetchTemplates()
         }
 
@@ -183,14 +188,14 @@ fun AppProfileTemplateScreen() {
                     scrollBehavior.nestedScrollConnection
                 )
                 .blurSource(),
-            isRefreshing = viewModel.isRefreshing,
+            isRefreshing = uiState.isRefreshing,
             onRefresh = {
                 scope.launch { viewModel.fetchTemplates() }
             },
             indicator = {
                 PullToRefreshDefaults.LoadingIndicator(
                     state = pullRefreshState,
-                    isRefreshing = viewModel.isRefreshing,
+                    isRefreshing = uiState.isRefreshing,
                     modifier = Modifier
                         .align(Alignment.TopCenter)
                         .padding(top = innerPadding.calculateTopPadding()),
@@ -209,8 +214,8 @@ fun AppProfileTemplateScreen() {
                     Spacer(modifier = Modifier.height(innerPadding.calculateTopPadding()))
                 }
 
-                splicedLazyColumnGroup(
-                    items = viewModel.templateList,
+                lazySegmentColumn(
+                    items = uiState.templateList,
                     key = { _, app -> app.id }) { _, app ->
                     TemplateItem(app)
                 }
@@ -238,12 +243,9 @@ private fun TemplateItem(
                 "template_edit"
             )
         },
+        description = "${template.id}${if (template.author.isEmpty()) "" else "@${template.author}"}",
+        descriptionStyle = MaterialTheme.typography.bodySmallEmphasized,
         descriptionColumnContent = {
-            Text(
-                text = "${template.id}${if (template.author.isEmpty()) "" else "@${template.author}"}",
-                style = MaterialTheme.typography.bodySmall,
-                fontSize = MaterialTheme.typography.bodySmall.fontSize,
-            )
             Text(template.description)
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -275,6 +277,16 @@ private fun TemplateItem(
             }
         }
     )
+}
+
+@Preview
+@Composable
+fun TemplateItemPreview() {
+    CompositionLocalProvider(
+        LocalNavigator provides Navigator(Route.AppProfileTemplate)
+    ) {
+        TemplateItem(TemplateViewModel.TemplateInfo())
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)

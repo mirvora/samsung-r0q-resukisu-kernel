@@ -6,14 +6,6 @@ import android.os.Build
 import android.os.PowerManager
 import android.system.Os
 import android.widget.Toast
-import androidx.annotation.StringRes
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.spring
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -35,7 +27,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Adb
 import androidx.compose.material.icons.filled.Android
-import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.Info
@@ -55,8 +46,9 @@ import androidx.compose.material.icons.twotone.Error
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuGroup
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.DropdownMenuPopup
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
@@ -64,6 +56,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.MenuDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
@@ -76,12 +69,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -92,12 +85,13 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.core.content.pm.PackageInfoCompat
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.resukisu.resukisu.BuildConfig
-import com.resukisu.resukisu.KernelSUApplication
 import com.resukisu.resukisu.KernelVersion
 import com.resukisu.resukisu.Natives
 import com.resukisu.resukisu.R
+import com.resukisu.resukisu.ksuApp
 import com.resukisu.resukisu.magica.MagicaService
 import com.resukisu.resukisu.ui.component.KsuIsValid
 import com.resukisu.resukisu.ui.component.SwipeableSnackbarHost
@@ -115,10 +109,11 @@ import com.resukisu.resukisu.ui.theme.blurEffect
 import com.resukisu.resukisu.ui.theme.blurSource
 import com.resukisu.resukisu.ui.theme.getCardColors
 import com.resukisu.resukisu.ui.theme.getCardElevation
+import com.resukisu.resukisu.ui.theme.renderBackgroundBlur
 import com.resukisu.resukisu.ui.util.LocalSnackbarHost
-import com.resukisu.resukisu.ui.util.downloader.checkNewVersion
 import com.resukisu.resukisu.ui.util.module.LatestVersionInfo
 import com.resukisu.resukisu.ui.util.reboot
+import com.resukisu.resukisu.ui.viewmodel.HomeUiState
 import com.resukisu.resukisu.ui.viewmodel.HomeViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -136,18 +131,17 @@ fun HomePage(
 ) {
     val context = LocalContext.current
     val viewModel = viewModel<HomeViewModel>(
-        viewModelStoreOwner = context.applicationContext as KernelSUApplication
+        viewModelStoreOwner = ksuApp
     )
-    val coroutineScope = rememberCoroutineScope()
-
-    val pullRefreshState = rememberPullToRefreshState()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
     LaunchedEffect(Unit) {
-        coroutineScope.launch {
-            viewModel.refreshData(context, false)
-        }
+        viewModel.awaitInitialData(context)
     }
 
+    if (!uiState.isInitialDataLoaded) return
+
+    val pullRefreshState = rememberPullToRefreshState()
     val topAppBarState = rememberTopAppBarState()
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(topAppBarState)
     val scrollState = rememberScrollState()
@@ -158,7 +152,7 @@ fun HomePage(
     Scaffold(
         topBar = {
             TopBar(
-                viewModel = viewModel,
+                uiState = uiState,
                 scrollBehavior = scrollBehavior,
             )
         },
@@ -176,8 +170,8 @@ fun HomePage(
     ) { innerPadding ->
         PullToRefreshBox(
             state = pullRefreshState,
-            isRefreshing = viewModel.isRefreshing,
-            onRefresh = { viewModel.refreshData(context) },
+            isRefreshing = uiState.isRefreshing,
+            onRefresh = { viewModel.refreshData(context, refreshUI = true) },
             modifier = Modifier
                 .fillMaxSize()
                 .blurSource(),
@@ -187,7 +181,7 @@ fun HomePage(
                         .padding(top = innerPadding.calculateTopPadding())
                         .align(Alignment.TopCenter),
                     state = pullRefreshState,
-                    isRefreshing = viewModel.isRefreshing,
+                    isRefreshing = uiState.isRefreshing,
                 )
             },
         ) {
@@ -204,9 +198,10 @@ fun HomePage(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 // 状态卡片
-                if (viewModel.isCoreDataLoaded) {
+                if (uiState.isCoreDataLoaded) {
                     StatusCard(
-                        systemStatus = viewModel.systemStatus,
+                        systemStatus = uiState.systemStatus,
+                        isHideVersion = uiState.isHideVersion,
                         onClickInstall = {
                             navigator.push(Route.Install(preselectedKernelUri = null))
                         },
@@ -229,22 +224,40 @@ fun HomePage(
                         }
                     )
 
-                    if (viewModel.systemStatus.requireNewKernel) {
-                        WarningCard(
-                            message = stringResource(
-                                id = R.string.incompatible_kernel_msg,
-                                Natives.version,
-                                Natives.MINIMAL_SUPPORTED_KERNEL
-                            ),
-                            icon = {
-                                Icon(
-                                    imageVector = Icons.TwoTone.Error,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.onErrorContainer,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                            }
-                        )
+                    if (uiState.systemStatus.requireNewKernel) {
+                        if ((uiState.systemStatus.ksuVersion ?: 0) > BuildConfig.VERSION_CODE) {
+                            WarningCard(
+                                message = stringResource(
+                                    id = R.string.require_manager_version,
+                                    BuildConfig.VERSION_CODE,
+                                    uiState.systemStatus.ksuVersion ?: 0
+                                ),
+                                icon = {
+                                    Icon(
+                                        imageVector = Icons.TwoTone.Error,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.onErrorContainer,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            )
+                        } else {
+                            WarningCard(
+                                message = stringResource(
+                                    id = R.string.require_kernel_version,
+                                    uiState.systemStatus.ksuVersion ?: 0,
+                                    BuildConfig.VERSION_CODE
+                                ),
+                                icon = {
+                                    Icon(
+                                        imageVector = Icons.TwoTone.Error,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.onErrorContainer,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            )
+                        }
                     }
 
                     // 警告信息
@@ -262,7 +275,7 @@ fun HomePage(
                         )
                     }
 
-                    if (!viewModel.systemStatus.isOfficialSignature) {
+                    if (!uiState.systemStatus.isOfficialSignature) {
                         WarningCard(
                             message = stringResource(
                                 R.string.unofficial_version_notice,
@@ -295,7 +308,7 @@ fun HomePage(
                         )
                     }
 
-                    if (viewModel.systemStatus.kernelPatchImplement == Natives.KernelPatchImplement.KERNEL_PATCH_OFFICIAL) {
+                    if (uiState.systemStatus.kernelPatchImplement == Natives.KernelPatchImplement.KERNEL_PATCH_OFFICIAL) {
                         WarningCard(
                             message = stringResource(
                                 R.string.conflict_with_apatch,
@@ -311,7 +324,7 @@ fun HomePage(
                         )
                     }
 
-                    if (viewModel.systemStatus.ksuVersion != null && !viewModel.systemStatus.isRootAvailable) {
+                    if (uiState.systemStatus.ksuVersion != null && !uiState.systemStatus.isRootAvailable) {
                         WarningCard(
                             message = stringResource(id = R.string.grant_root_failed),
                             icon = {
@@ -326,28 +339,20 @@ fun HomePage(
                     }
                 }
 
-                val checkUpdate = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
-                    .getBoolean("check_update", true)
-                if (checkUpdate) {
-                    UpdateCard()
-                }
+                UpdateCard(uiState.latestVersionInfo)
 
-                AnimatedVisibility(
-                    visible = viewModel.isExtendedDataLoaded
-                ) {
+                if (uiState.isExtendedDataLoaded) {
                     InfoCard(
-                        systemInfo = viewModel.systemInfo,
-                        isSimpleMode = viewModel.isSimpleMode,
-                        isHideSusfsStatus = viewModel.isHideSusfsStatus,
-                        isHideZygiskImplement = viewModel.isHideZygiskImplement,
-                        isHideMetaModuleImplement = viewModel.isHideMetaModuleImplement,
-                        showKpmInfo = viewModel.showKpmInfo,
-                        lkmMode = viewModel.systemStatus.lkmMode,
+                        systemInfo = uiState.systemInfo,
+                        isSimpleMode = uiState.isSimpleMode,
+                        isHideSusfsStatus = uiState.isHideSusfsStatus,
+                        isHideZygiskImplement = uiState.isHideZygiskImplement,
+                        isHideMetaModuleImplement = uiState.isHideMetaModuleImplement,
                     )
                 }
 
                 // 链接卡片
-                if (!viewModel.isSimpleMode && !viewModel.isHideLinkCard) {
+                if (!uiState.isSimpleMode && !uiState.isHideLinkCard) {
                     DonateCard()
                     LearnMoreCard()
                 }
@@ -359,16 +364,8 @@ fun HomePage(
 }
 
 @Composable
-fun UpdateCard() {
-    val context = LocalContext.current
-    val latestVersionInfo = LatestVersionInfo()
-    val newVersion by produceState(initialValue = latestVersionInfo) {
-        value = withContext(Dispatchers.IO) {
-            checkNewVersion()
-        }
-    }
-
-    val currentVersionCode = getManagerVersion(context).second
+fun UpdateCard(newVersion: LatestVersionInfo) {
+    val currentVersionCode = BuildConfig.VERSION_CODE
     val newVersionCode = newVersion.versionCode
     val newVersionUrl = newVersion.downloadUrl
     val changelog = newVersion.changelog
@@ -377,16 +374,7 @@ fun UpdateCard() {
     val title = stringResource(id = R.string.module_changelog)
     val updateText = stringResource(id = R.string.module_update)
 
-    AnimatedVisibility(
-        visible = newVersionCode > currentVersionCode,
-        enter = fadeIn() + expandVertically(
-            animationSpec = spring(
-                dampingRatio = Spring.DampingRatioMediumBouncy,
-                stiffness = Spring.StiffnessLow
-            )
-        ),
-        exit = shrinkVertically() + fadeOut()
-    ) {
+    if (newVersionCode > currentVersionCode) {
         val updateDialog = rememberConfirmDialog(onConfirm = { uriHandler.openUri(newVersionUrl) })
         WarningCard(
             message = stringResource(id = R.string.new_version_available).format(newVersionCode),
@@ -414,17 +402,26 @@ fun UpdateCard() {
     }
 }
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-fun RebootDropdownItem(@StringRes id: Int, reason: String = "") {
-    DropdownMenuItem(
-        text = { Text(stringResource(id)) },
-        onClick = { reboot(reason) })
+fun RebootDropdownItems(items: Map<Int, String>) {
+    items.onEachIndexed { index, (id, reason) ->
+        DropdownMenuItem(
+            selected = false,
+            text = { Text(stringResource(id)) },
+            onClick = { reboot(reason) },
+            shapes = MenuDefaults.itemShape(
+                index = index,
+                count = items.size
+            )
+        )
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun TopBar(
-    viewModel: HomeViewModel,
+    uiState: HomeUiState,
     scrollBehavior: TopAppBarScrollBehavior? = null,
 ) {
     val navigator = LocalNavigator.current
@@ -449,9 +446,9 @@ private fun TopBar(
                     MaterialTheme.colorScheme.surfaceContainer.copy(CardConfig.cardAlpha),
         ),
         actions = {
-            if (viewModel.isCoreDataLoaded) {
+            if (uiState.isCoreDataLoaded) {
                 // SuSFS 配置按钮
-                if (viewModel.systemInfo.susfsVersionSupported) {
+                if (uiState.systemInfo.susfsVersionSupported) {
                     IconButton(onClick = {
                         navigator.push(Route.SuSFSConfig)
                     }) {
@@ -473,22 +470,30 @@ private fun TopBar(
                             contentDescription = stringResource(id = R.string.reboot)
                         )
 
-                        DropdownMenu(expanded = showDropdown, onDismissRequest = {
+                        DropdownMenuPopup(expanded = showDropdown, onDismissRequest = {
                             showDropdown = false
                         }) {
-                            RebootDropdownItem(id = R.string.reboot)
-                            RebootDropdownItem(id = R.string.reboot_soft, reason = "soft_reboot")
+                            DropdownMenuGroup(
+                                shapes = MenuDefaults.groupShapes()
+                            ) {
+                                val pm =
+                                    LocalContext.current.getSystemService(Context.POWER_SERVICE) as PowerManager?
+                                var methods = mapOf(
+                                    R.string.reboot to "",
+                                    R.string.reboot_soft to "soft_reboot",
+                                    R.string.reboot_recovery to "recovery",
+                                    R.string.reboot_bootloader to "bootloader",
+                                    R.string.reboot_download to "download",
+                                    R.string.reboot_edl to "edl"
+                                )
 
-                            val pm =
-                                LocalContext.current.getSystemService(Context.POWER_SERVICE) as PowerManager?
-                            @Suppress("DEPRECATION")
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && pm?.isRebootingUserspaceSupported == true) {
-                                RebootDropdownItem(id = R.string.reboot_userspace, reason = "userspace")
+                                @Suppress("DEPRECATION")
+                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && pm?.isRebootingUserspaceSupported == true) {
+                                    methods = methods + (R.string.reboot_userspace to "userspace")
+                                }
+
+                                RebootDropdownItems(methods)
                             }
-                            RebootDropdownItem(id = R.string.reboot_recovery, reason = "recovery")
-                            RebootDropdownItem(id = R.string.reboot_bootloader, reason = "bootloader")
-                            RebootDropdownItem(id = R.string.reboot_download, reason = "download")
-                            RebootDropdownItem(id = R.string.reboot_edl, reason = "edl")
                         }
                     }
                 }
@@ -502,14 +507,21 @@ private fun TopBar(
 @Composable
 private fun StatusCard(
     systemStatus: HomeViewModel.SystemStatus,
+    isHideVersion: Boolean = false,
     onClickInstall: () -> Unit = {},
     onClickJailbreak: () -> Unit = {}
 ) {
+    val containerColor =
+        if (systemStatus.ksuVersion != null)
+            MaterialTheme.colorScheme.secondaryContainer
+        else
+            MaterialTheme.colorScheme.errorContainer
+
     ElevatedCard(
-        colors = getCardColors(
-            if (systemStatus.ksuVersion != null) MaterialTheme.colorScheme.secondaryContainer
-            else MaterialTheme.colorScheme.errorContainer
-        ),
+        modifier = Modifier
+            .clip(CardDefaults.elevatedShape)
+            .renderBackgroundBlur(containerColor),
+        colors = getCardColors(containerColor),
         elevation = getCardElevation(),
     ) {
         Row(
@@ -583,12 +595,6 @@ private fun StatusCard(
                                 )
                             }
                         }
-
-                        val isHideVersion = LocalContext.current.getSharedPreferences(
-                            "settings",
-                            Context.MODE_PRIVATE
-                        )
-                            .getBoolean("is_hide_version", false)
 
                         if (!isHideVersion) {
                             Spacer(Modifier.height(4.dp))
@@ -683,6 +689,9 @@ fun LearnMoreCard() {
     val url = stringResource(R.string.home_learn_kernelsu_url)
 
     ElevatedCard(
+        modifier = Modifier
+            .clip(CardDefaults.elevatedShape)
+            .renderBackgroundBlur(),
         colors = getCardColors(MaterialTheme.colorScheme.surfaceContainerHighest),
         elevation = CardDefaults.cardElevation(defaultElevation = cardElevation)
     ) {
@@ -716,6 +725,9 @@ fun DonateCard() {
     val uriHandler = LocalUriHandler.current
 
     ElevatedCard(
+        modifier = Modifier
+            .clip(CardDefaults.elevatedShape)
+            .renderBackgroundBlur(),
         colors = getCardColors(MaterialTheme.colorScheme.surfaceContainerHighest),
         elevation = getCardElevation(),
     ) {
@@ -750,11 +762,12 @@ private fun InfoCard(
     isSimpleMode: Boolean,
     isHideSusfsStatus: Boolean,
     isHideZygiskImplement: Boolean,
-    isHideMetaModuleImplement: Boolean,
-    showKpmInfo: Boolean,
-    lkmMode: Boolean?
+    isHideMetaModuleImplement: Boolean
 ) {
     ElevatedCard(
+        modifier = Modifier
+            .clip(CardDefaults.elevatedShape)
+            .renderBackgroundBlur(),
         colors = getCardColors(MaterialTheme.colorScheme.surfaceContainerHighest),
         elevation = getCardElevation(),
     ) {
@@ -825,7 +838,7 @@ private fun InfoCard(
 
             InfoCardItem(
                 stringResource(R.string.home_manager_version),
-                "${systemInfo.managerVersion.first} (${systemInfo.managerVersion.second.toInt()})",
+                "${systemInfo.managerVersion.first} (${systemInfo.managerVersion.second}/${systemInfo.managerVersion.third})",
                 icon = Icons.Default.SettingsSuggest,
             )
 
@@ -905,35 +918,6 @@ private fun InfoCard(
                 )
             }
 
-            if (lkmMode == false && !isSimpleMode && !showKpmInfo) {
-                val kpmNotSupport =
-                    systemInfo.kpmVersion.isEmpty() || systemInfo.kpmVersion.startsWith("Error")
-                val displayText = when {
-                    kpmNotSupport && Natives.isKPMEnabled() -> {
-                        stringResource(
-                            R.string.kpm_not_supported,
-                            stringResource(R.string.kernel_not_patched)
-                        )
-                    }
-
-                    kpmNotSupport && !Natives.isKPMEnabled() -> {
-                        stringResource(
-                            R.string.kpm_not_supported,
-                            stringResource(R.string.kernel_not_enabled)
-                        )
-                    }
-
-                    else -> {
-                        stringResource(R.string.kpm_supported, systemInfo.kpmVersion)
-                    }
-                }
-
-                InfoCardItem(
-                    stringResource(R.string.home_kpm_version),
-                    displayText,
-                    icon = Icons.Default.Archive
-                )
-            }
 
             if (!isSimpleMode && !isHideSusfsStatus && systemInfo.susfsEnabled && systemInfo.susfsVersion.isNotEmpty()) {
                 InfoCardItem(

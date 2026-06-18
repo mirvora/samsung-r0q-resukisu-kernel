@@ -40,8 +40,6 @@ import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.OpenInBrowser
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledTonalButton
@@ -87,8 +85,8 @@ import com.resukisu.resukisu.ui.component.GithubMarkdown
 import com.resukisu.resukisu.ui.component.SwipeableSnackbarHost
 import com.resukisu.resukisu.ui.component.rememberConfirmDialog
 import com.resukisu.resukisu.ui.component.settings.AppBackButton
+import com.resukisu.resukisu.ui.component.settings.SegmentedColumn
 import com.resukisu.resukisu.ui.component.settings.SettingsBaseWidget
-import com.resukisu.resukisu.ui.component.settings.SplicedColumnGroup
 import com.resukisu.resukisu.ui.navigation.LocalNavigator
 import com.resukisu.resukisu.ui.navigation.Navigator
 import com.resukisu.resukisu.ui.navigation.Route
@@ -96,6 +94,7 @@ import com.resukisu.resukisu.ui.theme.CardConfig
 import com.resukisu.resukisu.ui.theme.ThemeConfig
 import com.resukisu.resukisu.ui.theme.blurEffect
 import com.resukisu.resukisu.ui.theme.blurSource
+import com.resukisu.resukisu.ui.theme.renderBackgroundBlur
 import com.resukisu.resukisu.ui.util.LocalPermissionRequestInterface
 import com.resukisu.resukisu.ui.util.LocalSnackbarHost
 import com.resukisu.resukisu.ui.util.module.ReleaseAssetInfo
@@ -253,7 +252,7 @@ fun InfoTab(
             Spacer(Modifier.height(topPadding))
         }
         item {
-            SplicedColumnGroup(
+            SegmentedColumn(
                 title = stringResource(R.string.author)
             ) {
                 module.authorList.forEach { author ->
@@ -276,18 +275,20 @@ fun InfoTab(
             }
         }
 
-        item {
-            SplicedColumnGroup(
-                title = stringResource(R.string.source_code)
-            ) {
-                item {
-                    SettingsBaseWidget(
-                        icon = Icons.Default.Code,
-                        title = module.sourceUrl,
-                        onClick = {
-                            uriHandler.openUri(module.sourceUrl)
-                        }
-                    ) {}
+        if (module.sourceUrl.isNotEmpty() && module.sourceUrl != "null") {
+            item {
+                SegmentedColumn(
+                    title = stringResource(R.string.source_code)
+                ) {
+                    item {
+                        SettingsBaseWidget(
+                            icon = Icons.Default.Code,
+                            title = module.sourceUrl,
+                            onClick = {
+                                uriHandler.openUri(module.sourceUrl)
+                            }
+                        ) {}
+                    }
                 }
             }
         }
@@ -342,10 +343,13 @@ fun ReadmeTab(
                 Surface(
                     modifier = Modifier
                         .padding(16.dp)
-                        .clip(RoundedCornerShape(12.dp)),
-                    color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(
-                        alpha = CardConfig.cardAlpha
-                    )
+                        .clip(RoundedCornerShape(16.dp))
+                        .renderBackgroundBlur(),
+                    color =
+                        if (ThemeConfig.isEnableBlurExp)
+                            Color.Transparent
+                        else
+                            MaterialTheme.colorScheme.surfaceContainerHighest.copy(CardConfig.cardAlpha),
                 ) {
                     GithubMarkdown(
                         content = module.readme,
@@ -396,17 +400,18 @@ fun ReleaseCard(
         stringResource(R.string.confirm_install_module_title, module.moduleName)
     val confirmDialog = rememberConfirmDialog()
 
-    Card(
+    Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = 12.dp, end = 12.dp, top = 12.dp),
-        shape = RoundedCornerShape(12.dp),
-        elevation = CardDefaults.cardElevation(4.dp),
-        colors = CardDefaults.cardColors().copy(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerHighest.copy(
-                alpha = CardConfig.cardAlpha
-            )
-        )
+            .padding(start = 12.dp, end = 12.dp, top = 12.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .renderBackgroundBlur(MaterialTheme.colorScheme.surfaceContainerHigh),
+        shape = RoundedCornerShape(16.dp),
+        color =
+            if (ThemeConfig.isEnableBlurExp)
+                Color.Transparent
+            else
+                MaterialTheme.colorScheme.surfaceContainerHigh.copy(CardConfig.cardAlpha),
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(
@@ -449,7 +454,7 @@ fun ReleaseCard(
                     bottom = 5.dp
                 )
             )
-            if (release.assets.isEmpty()) return@Card
+            if (release.assets.isEmpty()) return@Surface
 
             Column {
                 release.assets.forEach { assetInfo ->
@@ -474,9 +479,10 @@ fun ReleaseCard(
                         }
                     }
                     SettingsBaseWidget(
-                        modifier = Modifier.clip(RoundedCornerShape(12.dp)),
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(16.dp))
+                            .renderBackgroundBlur(tintColor = MaterialTheme.colorScheme.surfaceContainerHighest),
                         title = assetInfo.name,
-                        noVerticalPadding = true,
                         onClick = {
                             onClick()
                         },
@@ -519,7 +525,7 @@ fun CollapsibleContent(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(12.dp))
+                .clip(RoundedCornerShape(16.dp))
                 .clickable { expanded = !expanded }
                 .padding(12.dp),
             verticalAlignment = Alignment.CenterVertically

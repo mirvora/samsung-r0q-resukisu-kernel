@@ -1,1 +1,1 @@
-/home/burak/kernels/GalaxyS22/archive/kernel_r0q/kernel_platform/./msm-kernel/drivers/pinctrl/core.h
+/home/n0hindi/burak/samsung-r0q-resukisu-kernel/kernel_platform/./msm-kernel/drivers/pinctrl/core.h
