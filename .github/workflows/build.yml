@@ -1,4 +1,4 @@
-name: Build r0q Kernel (AnyKernel ZIP)
+name: kernel build for s22 sanpdragon and upload anykernel to releases
 
 on:
   workflow_dispatch:
@@ -19,6 +19,12 @@ jobs:
           sudo apt update
           sudo apt install -y zip bc bison flex libssl-dev libelf-dev \
             build-essential python3 rsync cpio kmod lz4 unzip device-tree-compiler
+
+      - name: baseband guard update
+        run: |
+          cd kernel_platform/common
+          rm -rf ./Baseband-guard/
+          wget -O- https://github.com/vc-teahouse/Baseband-guard/raw/main/setup.sh | bash
 
       - name: kerneli build et
         run: |
