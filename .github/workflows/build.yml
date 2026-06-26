@@ -1,0 +1,41 @@
+name: Build r0q Kernel (AnyKernel ZIP)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 350
+
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+
+      - name: gerekli ıvır zıvırları yükle
+        run: |
+          sudo apt update
+          sudo apt install -y zip bc bison flex libssl-dev libelf-dev \
+            build-essential python3 rsync cpio kmod lz4 unzip device-tree-compiler
+
+      - name: kerneli build et
+        run: |
+          bash ./build_kernel_GKI.sh
+
+      - name: anykernel ziple
+        run: |
+          cp out/msm-waipio-waipio-gki/dist/Image AnyKernel/Image
+          COMMIT_COUNT=$(git rev-list --count HEAD)
+          ZIP_NAME="resukisu-${COMMIT_COUNT}-anykernel.zip"
+          zip -r "$ZIP_NAME" AnyKernel/*
+          echo "ZIP_NAME=$ZIP_NAME" >> $GITHUB_ENV
+
+      - name: release yükle
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ZIP_NAME }}
+          path: ${{ env.ZIP_NAME }}
+          if-no-files-found: error
+          retention-days: 7
